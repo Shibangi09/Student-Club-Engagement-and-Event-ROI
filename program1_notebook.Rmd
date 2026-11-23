@@ -9,22 +9,222 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+setwd("D:/student_club")
+getwd()
+clubs  <- read.csv("club_engagements_new.csv")
+events <- read.csv("event_roi_new.csv")
+head(clubs)
+head(events)
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r club-engagement}
+clubs$Attendance_Rate   <- round(clubs$Avg_Attendance / clubs$Members * 100, 1)
+clubs$Consistency_Rate  <- round(clubs$Regular_Participants / clubs$Members * 100, 1)
+clubs$Interaction_Score <- clubs$Competition_Entries + clubs$Workshops_Attended
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+clubs$Engagement_Score <- round(
+  0.30 * clubs$Attendance_Rate +
+  0.30 * clubs$Consistency_Rate +
+  0.20 * (clubs$Interaction_Score / max(clubs$Interaction_Score) * 100) +
+  0.20 * (clubs$Feedback_Rating / 5 * 100), 1)
 
-```{r cars}
-summary(cars)
+ranked <- clubs[order(-clubs$Engagement_Score),
+                c("Club_Name","Members","Attendance_Rate","Consistency_Rate","Engagement_Score")]
+
+print(ranked, row.names = FALSE)
 ```
 
-## Including Plots
+hour_value   <- 50
+member_value <- 200
 
-You can also embed plots, for example:
+done <- subset(events, Status == "Completed")
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
+done$Total_Cost    <- done$Money_Spent_INR + done$Volunteer_Hours * hour_value
+done$Total_Benefit <- done$Sponsorship_INR + done$Ticket_Revenue_INR +
+                      done$New_Memberships * member_value
+done$ROI_Percent   <- round((done$Total_Benefit - done$Total_Cost) /
+                             done$Total_Cost * 100, 1)
+done$Crowd_vs_Expected <- round(done$Actual_Attendance /
+                                done$Expected_Attendance * 100, 0)
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+roi_table <- done[, c("Event_Name","Total_Cost","Total_Benefit","ROI_Percent","Crowd_vs_Expected")]
+print(roi_table, row.names = FALSE)
+
+barplot(ranked$Engagement_Score, names.arg = ranked$Club_Name,
+        las = 2, col = "steelblue", main = "Club Engagement Score",
+        ylab = "Score (out of 100)")
+
+barplot(roi_table$ROI_Percent, names.arg = roi_table$Event_Name,
+        col = c("darkorange", "seagreen"), main = "Event ROI (%)",
+        ylab = "ROI %")
+
+
+#financial-metrices
+hour_value   <- 50
+member_value <- 200
+
+done <- subset(events, Status == "Completed")
+
+done$Total_Cost    <- done$Money_Spent_INR + done$Volunteer_Hours * hour_value
+done$Total_Revenue <- done$Sponsorship_INR + done$Ticket_Revenue_INR
+done$Total_Benefit <- done$Total_Revenue + done$New_Memberships * member_value
+
+done$Financial_ROI          <- round((done$Total_Benefit - done$Total_Cost) / done$Total_Cost * 100, 1)
+done$Cost_per_Attendee      <- round(done$Total_Cost / done$Actual_Attendance, 1)
+done$Revenue_per_Attendee   <- round(done$Total_Revenue / done$Actual_Attendance, 1)
+done$Budget_Utilization     <- round(done$Money_Spent_INR / done$Planned_Budget_INR * 100, 1)
+done$Sponsorship_Share      <- round(done$Sponsorship_INR / done$Total_Cost * 100, 1)
+done$Break_Even_Attendance  <- ceiling((done$Total_Cost - done$Sponsorship_INR) / done$Ticket_Price_INR)
+
+fin_table <- done[, c("Event_Name","Financial_ROI","Cost_per_Attendee","Revenue_per_Attendee",
+                      "Budget_Utilization","Sponsorship_Share","Break_Even_Attendance","Paid_Attendees")]
+print(fin_table, row.names = FALSE)
+
+
+#financial graph
+par(mfrow = c(2, 3), mar = c(5, 4, 3, 1))
+
+# 1. Financial ROI (%)
+barplot(done$Financial_ROI, names.arg = done$Event_Name,
+        col = c("darkorange", "seagreen"), main = "Financial ROI (%)",
+        ylab = "ROI %", ylim = c(0, max(done$Financial_ROI) * 1.2))
+
+# 2. Cost vs revenue per attendee
+barplot(rbind(done$Cost_per_Attendee, done$Revenue_per_Attendee),
+        beside = TRUE, names.arg = done$Event_Name,
+        col = c("tomato", "seagreen"), main = "Cost vs Revenue per Attendee",
+        ylab = "INR per attendee",
+        legend.text = c("Cost", "Revenue"), args.legend = list(x = "topleft"))
+
+# 3. Budget utilization (%)
+barplot(done$Budget_Utilization, names.arg = done$Event_Name,
+        col = "steelblue", main = "Budget Utilization (%)",
+        ylab = "% of planned budget", ylim = c(0, 110))
+abline(h = 100, lty = 2, col = "red")   # red line = full budget
+
+# 4. Sponsorship contribution (%)
+barplot(done$Sponsorship_Share, names.arg = done$Event_Name,
+        col = "purple", main = "Sponsorship Contribution (%)",
+        ylab = "% of total cost", ylim = c(0, 100))
+
+par(mfrow = c(1, 1))
+
+
+
+
+#Student engagement matrix
+# Event-level
+done$Reg_to_Attendance <- round(done$Actual_Attendance / done$Registered_Students * 100, 1)
+done$Repeat_Rate       <- round(done$Returning_Participants / done$Previous_Participants * 100, 1)
+
+# Club-level
+clubs$Active_Member_Rate  <- round(clubs$Regular_Participants / clubs$Members * 100, 1)
+clubs$Membership_Growth   <- round((clubs$Members - clubs$Previous_Members) / clubs$Previous_Members * 100, 1)
+clubs$Retention_Rate      <- round(clubs$Retained_Members / clubs$Previous_Members * 100, 1)
+clubs$Cross_Club_Rate     <- round(clubs$Multi_Club_Members / clubs$Members * 100, 1)
+
+event_eng <- done[, c("Event_Name","Reg_to_Attendance","Repeat_Rate")]
+club_eng  <- clubs[order(-clubs$Retention_Rate),
+                   c("Club_Name","Active_Member_Rate","Membership_Growth","Retention_Rate","Cross_Club_Rate")]
+print(event_eng, row.names = FALSE)
+print(club_eng,  row.names = FALSE)
+
+
+#graph
+par(mfrow = c(2, 3), mar = c(8, 4, 3, 1))
+
+# 1. Event: registration-to-attendance vs repeat participation
+barplot(rbind(done$Reg_to_Attendance, done$Repeat_Rate),
+        beside = TRUE, names.arg = done$Event_Name,
+        col = c("steelblue", "orange"), main = "Event Engagement Rates (%)",
+        ylab = "%", ylim = c(0, 110),
+        legend.text = c("Registration to attendance", "Repeat participation"),
+        args.legend = list(x = "topright", cex = 0.7))
+
+# 2. Club: active member rate
+ord <- clubs[order(-clubs$Active_Member_Rate), ]
+barplot(ord$Active_Member_Rate, names.arg = ord$Club_Name, las = 2,
+        col = "steelblue", main = "Active Member Rate (%)", ylab = "%")
+
+# 3. Club: membership growth
+ord <- clubs[order(-clubs$Membership_Growth), ]
+barplot(ord$Membership_Growth, names.arg = ord$Club_Name, las = 2,
+        col = "seagreen", main = "Membership Growth (%)", ylab = "%")
+
+# 4. Club: retention rate
+ord <- clubs[order(-clubs$Retention_Rate), ]
+barplot(ord$Retention_Rate, names.arg = ord$Club_Name, las = 2,
+        col = "darkorange", main = "Student Retention Rate (%)", ylab = "%")
+
+# 5. Club: cross-club participation
+ord <- clubs[order(-clubs$Cross_Club_Rate), ]
+barplot(ord$Cross_Club_Rate, names.arg = ord$Club_Name, las = 2,
+        col = "purple", main = "Cross-Club Participation (%)", ylab = "%")
+
+# 6. Club: overall engagement score (from the earlier chunk)
+barplot(ranked$Engagement_Score, names.arg = ranked$Club_Name, las = 2,
+        col = "tomato", main = "Club Engagement Score", ylab = "Score (out of 100)")
+
+par(mfrow = c(1, 1))
+
+
+
+
+
+#quality matrix and event performance score
+# Normalise all five components to 0-100
+A <- done$Reg_to_Attendance
+S <- done$Satisfaction_Rating / 5 * 100
+L <- done$Learning_Outcome_Score / 5 * 100
+R <- done$Repeat_Rate
+C <- pmin(100, done$Total_Revenue / done$Total_Cost * 100)
+
+done$EPS <- round(0.30*A + 0.25*S + 0.20*L + 0.15*R + 0.10*C, 1)
+
+# Popularity index and networking
+social_pa <- done$Social_Media_Engagements / done$Actual_Attendance
+social_idx <- social_pa / max(social_pa) * 100
+done$Popularity_Index <- round((pmin(100, done$Actual_Attendance / done$Expected_Attendance * 100) + social_idx) / 2, 1)
+done$Networking_per_Attendee <- round(done$Networking_Connections / done$Actual_Attendance, 2)
+
+quality_table <- done[, c("Event_Name","Satisfaction_Rating","Learning_Outcome_Score",
+                          "Networking_per_Attendee","Popularity_Index","EPS")]
+print(quality_table, row.names = FALSE)
+
+#graph
+par(mfrow = c(2, 3), mar = c(5, 4, 3, 1))
+
+# 1. Satisfaction vs learning outcome (out of 5)
+barplot(rbind(done$Satisfaction_Rating, done$Learning_Outcome_Score),
+        beside = TRUE, names.arg = done$Event_Name,
+        col = c("steelblue", "orange"), main = "Satisfaction vs Learning (out of 5)",
+        ylim = c(0, 5.5),
+        legend.text = c("Satisfaction", "Learning"),
+        args.legend = list(x = "topright", cex = 0.8))
+
+# 2. Networking per attendee
+barplot(done$Networking_per_Attendee, names.arg = done$Event_Name,
+        col = "purple", main = "Networking Connections per Attendee",
+        ylab = "Connections")
+
+# 3. Popularity index
+barplot(done$Popularity_Index, names.arg = done$Event_Name,
+        col = "seagreen", main = "Event Popularity Index",
+        ylab = "Score (0-100)", ylim = c(0, 110))
+
+# 4. Event Performance Score
+barplot(done$EPS, names.arg = done$Event_Name,
+        col = c("darkorange", "seagreen"), main = "Event Performance Score (EPS)",
+        ylab = "Score (0-100)", ylim = c(0, 100))
+
+# 5. What makes up each EPS (stacked)
+contrib <- rbind(Attendance = 0.30 * A, Satisfaction = 0.25 * S,
+                 Learning = 0.20 * L, Repeat = 0.15 * R, Cost_Eff = 0.10 * C)
+barplot(contrib, names.arg = done$Event_Name,
+        col = c("steelblue", "orange", "seagreen", "purple", "tomato"),
+        main = "EPS Breakdown by Component", ylab = "EPS points",
+        legend.text = rownames(contrib), args.legend = list(x = "bottomright", cex = 0.7))
+
+par(mfrow = c(1, 1))
