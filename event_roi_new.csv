@@ -1,0 +1,4 @@
+Event_Name,Event_Type,Status,Duration_Days,Planned_Budget_INR,Money_Spent_INR,Volunteer_Hours,Sponsorship_INR,Ticket_Price_INR,Paid_Attendees,Ticket_Revenue_INR,Registered_Students,Expected_Attendance,Actual_Attendance,Previous_Participants,Returning_Participants,New_Memberships,Satisfaction_Rating,Learning_Outcome_Score,Networking_Connections,Social_Media_Engagements,Clubs_Participated
+Daksh,Technical Fest,Completed,3,270000,250000,600,260000,50,1200,60000,2800,1500,2400,1400,840,180,4.6,4.5,650,15000,10
+Freshers,Welcome Event,Completed,1,100000,90000,250,50000,100,500,50000,600,400,520,300,150,90,4.5,3.8,300,2500,10
+Ecclesia,Cultural Fest,Planned,,300000,,,,,,,,,,,,,,,,,
