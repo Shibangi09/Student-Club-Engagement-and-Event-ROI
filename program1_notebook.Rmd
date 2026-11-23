@@ -228,3 +228,135 @@ barplot(contrib, names.arg = done$Event_Name,
         legend.text = rownames(contrib), args.legend = list(x = "bottomright", cex = 0.7))
 
 par(mfrow = c(1, 1))
+
+
+
+ev    <- read.csv("events_master.csv")
+seg   <- read.csv("event_segments.csv")
+enrol <- read.csv("enrolment.csv")
+head(ev)
+head(seg)
+head(enrol)
+
+hour_value <- 50; member_value <- 200
+
+ev$Total_Cost    <- ev$Money_Spent_INR + ev$Volunteer_Hours * hour_value
+ev$Total_Revenue <- ev$Sponsorship_INR + ev$Ticket_Revenue_INR
+ev$Total_Benefit <- ev$Total_Revenue + ev$New_Members * member_value
+ev$ROI               <- round((ev$Total_Benefit - ev$Total_Cost) / ev$Total_Cost * 100, 1)
+ev$Cost_per_Attendee <- round(ev$Total_Cost / ev$Attended, 1)
+ev$Attendance_Rate   <- round(ev$Attended / ev$Registered * 100, 1)
+ev$Impact_Score      <- round(0.5 * ev$Avg_Satisfaction / 5 * 100 +
+                              0.5 * pmin(100, ev$Attendance_Rate), 1)
+
+print(ev[, c("Event_Name","Event_Type","ROI","Cost_per_Attendee",
+             "Attendance_Rate","Avg_Satisfaction","Impact_Score")], row.names = FALSE)
+             
+
+             
+drivers  <- c("Money_Spent_INR","Marketing_Spend_INR","Duration_Days",
+              "Held_On_Weekend","Free_Entry","Collaborating_Clubs")
+outcomes <- c("Attended","Attendance_Rate","Avg_Satisfaction")
+
+# Spearman (rank) correlation, so Daksh's huge size doesn't dominate
+driver_cor <- round(cor(ev[, drivers], ev[, outcomes], method = "spearman"), 2)
+print(driver_cor)
+
+m_att <- lm(Attendance_Rate ~ Held_On_Weekend + Free_Entry, data = ev)
+m_sat <- lm(Avg_Satisfaction ~ Attendance_Rate + Collaborating_Clubs, data = ev)
+summary(m_att)
+summary(m_sat)
+
+par(mfrow = c(2, 2), mar = c(7, 4, 3, 1))
+plot(log10(ev$Marketing_Spend_INR), log10(ev$Attended), pch = 16, col = "steelblue",
+     xlab = "log10 marketing spend", ylab = "log10 attendance", main = "Marketing vs Attendance")
+abline(lm(log10(Attended) ~ log10(Marketing_Spend_INR), data = ev), col = "red")
+
+boxplot(Attendance_Rate ~ Held_On_Weekend, data = ev, names = c("Weekday", "Weekend"),
+        col = c("orange", "seagreen"), ylab = "Attendance rate (%)", main = "Weekend vs Weekday")
+boxplot(Avg_Satisfaction ~ Event_Type, data = ev, las = 2, col = "grey85",
+        ylab = "Rating", main = "Satisfaction by Event Type")
+par(mfrow = c(1, 1))
+
+
+
+impact_cutoff <- 80
+
+ev$Decision <- ifelse(ev$ROI >= 0 & ev$Impact_Score >= impact_cutoff, "Scale up",
+               ifelse(ev$ROI <  0 & ev$Impact_Score >= impact_cutoff, "Fund for impact",
+               ifelse(ev$ROI >= 0, "Fix experience", "Rework")))
+
+multiplier <- c("Scale up" = 1.2, "Fund for impact" = 1.0, "Fix experience" = 0.9, "Rework" = 0.7)
+raw <- ev$Money_Spent_INR * unname(multiplier[ev$Decision])
+ev$Indicative_Budget <- round(raw / sum(raw) * sum(ev$Money_Spent_INR), -2)  # same total pool
+
+print(ev[, c("Event_Name","ROI","Impact_Score","Decision","Money_Spent_INR","Indicative_Budget")],
+      row.names = FALSE)
+print(table(ev$Decision))
+
+type_sum <- do.call(rbind, lapply(split(ev, ev$Event_Type), function(g) data.frame(
+  Events = nrow(g), Spend = sum(g$Money_Spent_INR), Attended = sum(g$Attended),
+  ROI = round((sum(g$Total_Benefit) - sum(g$Total_Cost)) / sum(g$Total_Cost) * 100, 1),
+  Satisfaction = round(sum(g$Avg_Satisfaction * g$Attended) / sum(g$Attended), 2))))
+type_sum$Spend_Share      <- round(type_sum$Spend / sum(type_sum$Spend) * 100, 1)
+type_sum$Attendance_Share <- round(type_sum$Attended / sum(type_sum$Attended) * 100, 1)
+print(type_sum)
+
+cols <- c("Scale up"="seagreen", "Fund for impact"="steelblue", "Fix experience"="orange", "Rework"="tomato")
+plot(ev$Impact_Score, ev$ROI, pch = 16, cex = 1.6, col = cols[ev$Decision],
+     xlab = "Impact Score", ylab = "Financial ROI (%)", main = "Event Decision Map")
+abline(h = 0, v = impact_cutoff, lty = 2)
+text(ev$Impact_Score, ev$ROI, ev$Event_ID, pos = 3, cex = 0.7)
+legend("bottomright", legend = names(cols), col = cols, pch = 16)
+
+
+
+
+
+seg <- merge(seg, ev[, c("Event_ID","Event_Type","Cost_per_Attendee")], by = "Event_ID")
+seg$Cost_Allocated <- seg$Cost_per_Attendee * seg$Attended
+seg$Sat_Weighted   <- seg$Avg_Satisfaction * seg$Attended
+
+summarise_by <- function(by_col) {
+  g <- aggregate(seg[, c("Registered","Attended","New_Members","Cost_Allocated","Sat_Weighted")],
+                 by = list(Group = seg[[by_col]]), FUN = sum)
+  e <- aggregate(enrol["Enrolled"], by = list(Group = enrol[[by_col]]), FUN = sum)
+  g <- merge(g, e, by = "Group")
+  data.frame(Group = g$Group, Enrolled = g$Enrolled, Attended = g$Attended,
+    Attendance_Rate         = round(g$Attended / g$Registered * 100, 1),
+    Satisfaction            = round(g$Sat_Weighted / g$Attended, 2),
+    New_Members_per_100     = round(g$New_Members / g$Attended * 100, 1),
+    Attendances_per_Student = round(g$Attended / g$Enrolled, 2),
+    Cost_per_Student        = round(g$Cost_Allocated / g$Enrolled, 0))
+}
+by_year <- summarise_by("Student_Year")
+by_prog <- summarise_by("Programme")
+print(by_year, row.names = FALSE)
+print(by_prog, row.names = FALSE)
+
+# Year x programme participation intensity
+att_mat   <- tapply(seg$Attended, list(seg$Student_Year, seg$Programme), sum)
+enr_mat   <- tapply(enrol$Enrolled, list(enrol$Student_Year, enrol$Programme), sum)
+intensity <- round(att_mat / enr_mat, 2)
+rownames(intensity) <- paste("Year", rownames(intensity))
+print(intensity)
+
+# Which event types suit which year (satisfaction)
+sw <- tapply(seg$Sat_Weighted, list(seg$Student_Year, seg$Event_Type), sum)
+aw <- tapply(seg$Attended,     list(seg$Student_Year, seg$Event_Type), sum)
+print(round(sw / aw, 2))
+
+par(mfrow = c(2, 2), mar = c(5, 4, 3, 1))
+barplot(by_year$Attendances_per_Student, names.arg = paste("Year", by_year$Group),
+        col = "steelblue", main = "Attendances per Student by Year", ylab = "Per student")
+barplot(by_year$Cost_per_Student, names.arg = paste("Year", by_year$Group),
+        col = "orange", main = "Event Cost per Student by Year", ylab = "INR")
+barplot(by_prog$Attendances_per_Student, names.arg = by_prog$Group,
+        col = "seagreen", main = "Attendances per Student by Programme", ylab = "Per student")
+barplot(by_prog$Satisfaction, names.arg = by_prog$Group, ylim = c(0, 5),
+        col = "purple", main = "Satisfaction by Programme", ylab = "Rating")
+par(mfrow = c(1, 1))
+
+heatmap(intensity, Rowv = NA, Colv = NA, scale = "none",
+        col = heat.colors(12, rev = TRUE), margins = c(8, 6),
+        main = "Attendances per Student (Year x Programme)")
